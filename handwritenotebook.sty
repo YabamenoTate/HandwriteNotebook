@@ -1,0 +1,217 @@
+\usepackage{luatexja-fontspec}
+\usepackage{unicode-math}
+\setmainfont[Ligatures=TeX]{ShigotoMemogaki}[BoldFont=ShigotoMemogaki,]
+\setsansfont[Ligatures=TeX]{ShigotoMemogaki}[BoldFont=ShigotoMemogaki]
+\setmainjfont{ShigotoMemogaki}[BoldFont=ShigotoMemogaki]
+\setsansjfont{ShigotoMemogaki}[BoldFont=ShigotoMemogaki]
+\setmathfont{Mathilde}
+\usepackage{luacode}
+\usepackage{xstring}
+\usepackage{pgf} % 計算
+
+\newcommand{\setrandomspacing}[1]{%
+	\IfStrEq{#1}{ }{ }{%
+		\directlua{
+			rand = math.random(1,2)
+			if rand == 1 then
+				tex.print("\\fontspec{ShigotoMemogaki}")
+			elseif rand == 2 then
+				tex.print("\\fontspec{ERIJI}\\hspace{-1pt}")
+			end
+		}%
+		\directlua{tex.sprint("\\hspace{" .. (math.random(-1400, -1250) / 300.0) .. "pt}\\vspace{" .. (math.random(-135, 100) / 400.0) .. "pt}\\fontsize{" .. (math.random(120, 150) / 10.0) .. "pt}{0pt}\\selectfont{}\\color[gray]{" .. (math.random(0, 100) / 1000.0) .. "}")}%
+		\raisebox{\directlua{tex.sprint((math.random(0, 60) / 90.0) .. "pt")}}{%
+		\rotatebox{\directlua{tex.sprint((math.random(-300, 300) / 70.0))}}{
+		\scalebox{\directlua{tex.sprint((math.random(90, 120) / 100.0))}}[1.0]{#1}}}%
+		\directlua{
+			if rand == 2 then
+				tex.print("\\hspace{-1pt}")
+			end
+		}%
+	}%
+}
+
+\begin{luacode*}
+	function split_and_wrap(text)
+		local result = ""
+		local i = 1, j, char, bras, brac
+		local text_len = utf8.len(text)
+		while i <= text_len do
+			char = utf8.char(utf8.codepoint(text, utf8.offset(text, i)))
+			if char == "\\" then
+				-- LaTeX command
+				j = i
+				while j <= text_len do
+					j = j + 1
+					brac = utf8.char(utf8.codepoint(text, utf8.offset(text, j)))
+					if brac == "{" or brac == "}" or brac == "%" or brac == "&" or brac == "_" or brac == "^" or brac == "#" or brac == "$" or brac == "\\" or brac == " " or brac == "\r" or brac == "\n" or brac == "\t" then
+						if i + 1 == j then
+							j = j + 1
+						end
+						break
+					end
+				end
+				-- Check for braces or space after the command
+				result = result .. text:sub(utf8.offset(text, i), utf8.offset(text, j) - 1)
+				if utf8.char(utf8.codepoint(text, utf8.offset(text, j))) == " " then
+					i = j + 1
+				else
+					i = j
+				end
+			elseif char == "$" then
+				-- Math mode
+				local j = i + 1
+				while j <= text_len and utf8.char(utf8.codepoint(text, utf8.offset(text, j))) ~= "$" do
+					j = j + 1
+				end
+				result = result .. text:sub(utf8.offset(text, i), utf8.offset(text, j))
+				i = j + 1
+			elseif char == "{" then
+				bras = 1
+				j = i + 1
+				while bras > 0 and j <= text_len do
+					brac = utf8.char(utf8.codepoint(text, utf8.offset(text, j)))
+					if brac == "\\" then
+						j = j + 1
+					elseif brac == "{" then
+						bras = bras + 1
+					elseif brac == "}" then
+						bras = bras - 1
+					end
+					j = j + 1
+				end
+				result = result .. text:sub(utf8.offset(text, i), utf8.offset(text, j) - 1)
+				i = j
+			elseif char == "[" then
+				bras = 1
+				j = i + 1
+				while bras > 0 and j < text_len do
+					brac = utf8.char(utf8.codepoint(text, utf8.offset(text, j)))
+					if brac == "\\" then
+						j = j + 1
+					elseif brac == "[" then
+						bras = bras + 1
+					elseif brac == "]" then
+						bras = bras - 1
+					end
+					j = j + 1
+				end
+				result = result .. text:sub(utf8.offset(text, i), utf8.offset(text, j) - 1)
+				i = j
+			elseif char == " " then
+				result = result .. " "
+				i = i + 1
+			elseif char == "\n" then
+				result = result .. "\n"
+				i = i + 1
+			elseif char == "&" then
+				result = result .. "&"
+				i = i + 1
+			else
+				-- Regular character
+				result = result .. "\\setrandomspacing{" .. char .. "}"
+				i = i + 1
+			end
+		end
+		tex.print(result)
+	end
+\end{luacode*}
+
+% コマンドと環境では展開順序が異なる（コマンドは内側から、環境は外側から）
+\newcommand{\randomspacing}[1]{
+	\setlength{\baselineskip}{0pt}
+	\fontsize{12pt}{0pt}\selectfont
+	\begingroup
+	\catcode`\|=0
+	\catcode`\{=1
+	\catcode`\}=2
+	\catcode`\\=12
+	\catcode`\%=12
+	\catcode`\#=12
+	\catcode`\_=12
+	\catcode`\$=12
+	\catcode`\&=12
+	\catcode`\~=12
+	\catcode`\^=12
+	\catcode`\|=12
+	\catcode`뷁=0
+	% バックスラッシュでない文字を一時的にコマンド用文字とする
+	% この方法を用いると、LaTeXからLuaに展開前の状態で文字列を転送できる
+	\scantokens{뷁directlua{rand_str="뷁luaescapestring{#1}"}}
+	\endgroup
+	% コマンド用文字をバックスラッシュに戻したところで、Luaで編集したデータを出力
+	\directlua{split_and_wrap(rand_str)}
+}
+
+% 箇条書きの余白を消す
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=*}
+
+%キャンパスノートの余白
+\usepackage[
+	% 上下余白 25.4 mm 、左右余白 19.05 mm
+	margin=7truemm, top=36truemm, bottom=20truemm,
+	% ヘッダーとフッターの位置調整
+	headsep=7truemm, footskip=10truemm]{geometry}
+
+
+% \section コマンドのバックアップ
+\let\oldsection\section
+
+% \section コマンドの再定義
+\renewcommand{\section}[1]{
+  \vspace{1cm} % セクション前のスペース
+  \oldsection*{#1}
+  \vspace{6mm} % セクション後のスペース
+}
+
+% \subsectionコマンドの変更
+\renewcommand{\subsection}[1]{\par\noindent ＜#1＞\par}
+\renewcommand{\subsubsection}[1]{\par\noindent ・#1\par}
+
+% ページ番号を消す
+\usepackage{fancyhdr}
+\renewcommand{\headrulewidth}{0pt}
+\pagestyle{fancy}
+\fancyhf{}
+
+% \section の番号の後にドットを付けることを宣言
+\newcommand\sectiondot[1]{%
+	\expandafter\def\csname @seccntfmt@#1\endcsname##1{%
+		\csname the##1\endcsname.\hspace{-1.5ex}
+	}
+}
+% 既存の \section を上書き
+\sectiondot{section}
+
+% 内部コマンドの再定義：\@seccntfmt@#1 という名前のコマンドが定義されていればそれを使い、
+% そうでなければデフォルトのスタイル（番号+空白）を使うようにする
+\renewcommand\@seccntformat[1]{\@ifundefined{@seccntfmt@#1}%
+	{\csname the#1\endcsname}% デフォルトのスタイル
+	{\csname @seccntfmt@#1\endcsname{#1}}%
+}
+
+% 「≒」の宣言
+\newcommand\near\fallingdotseq
+
+% 「<=」 と 「>=」の記号の宣言
+% LaTeX の内部コマンドにアクセスするため、*.sty に記述しないとエラーになる
+\usepackage{ifthen}
+\newcommand{\@isFontCEO}[2]{\ifthenelse{\equal{\f@family}{ceo}}{#1}{#2}}
+\newcommand{\LEQQ}{\@isFontCEO\leq{\mathrel{\mathpalette\gl@align<}}}
+\newcommand{\GEQQ}{\@isFontCEO\geq{\mathrel{\mathpalette\gl@align>}}}
+\newcommand{\gl@align}[2]{\lower.7ex\vbox{\baselineskip\z@skip\lineskip\z@
+\ialign{$\m@th#1\hfil##\hfil$\crcr#2\@isFontCEO{\vspace{0.25ex}}{\vspace{-0.8ex}}\crcr-\vspace{-1.2ex}\crcr-\crcr}}}
+
+% 単位をローマン体で出力するコマンド
+\newcommand{\unit}[1]{\ifmmode\,\mathrm{[#1]}\else\,$\mathrm{[#1]}$\fi}
+
+% 参考文献の表示方法の変更
+\renewcommand{\@cite}[1]{\raisebox{1ex}{\footnotesize [文献 #1]}}
+
+% 図と表を連番にする
+\makeatletter
+\let\c@figure\c@table
+\makeatother
+
+\parindent = 0pt
